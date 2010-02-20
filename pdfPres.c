@@ -832,24 +832,57 @@ static void onResize(GtkWidget *widg, GtkAllocation *al,
 	}
 }
 
+void swapBoxContents(GtkWidget *a, GtkWidget *b)
+{
+	GtkWidget *childA = NULL;
+	GtkWidget *childB = NULL;
+
+	/* Those widgets are outer event boxes --> "highlighting" and stuff
+	 * like that is done on those boxes. Reset the background color now
+	 * so that we can start from scratch. */
+	gtk_widget_modify_bg(a, GTK_STATE_NORMAL, NULL);
+	gtk_widget_modify_bg(b, GTK_STATE_NORMAL, NULL);
+
+	/* Get current children. */
+	childA = gtk_bin_get_child(GTK_BIN(a));
+	childB = gtk_bin_get_child(GTK_BIN(b));
+
+	/* Reference them. This must be done because the following call to
+	 * _remove() may unreference them -- hence, they could be destroyed.
+	 */
+	g_object_ref(G_OBJECT(childA));
+	g_object_ref(G_OBJECT(childB));
+
+	gtk_container_remove(GTK_CONTAINER(a), childA);
+	gtk_container_remove(GTK_CONTAINER(b), childB);
+
+	/* Re-add and unref them. */
+	gtk_container_add(GTK_CONTAINER(a), childB);
+	gtk_container_add(GTK_CONTAINER(b), childA);
+
+	g_object_unref(G_OBJECT(childA));
+	g_object_unref(G_OBJECT(childB));
+
+	/* No need to call refreshPorts() because resizing and re-rendering
+	 * has already been done by the resize callback. But we need to
+	 * update colors and stuff. */
+	refreshFrames();
+}
+
 void drag_begin(GtkWidget *widg, GdkDragContext *context, gpointer user)
 {
 	dragStartWidg = widg;
 	dragStopWidg = NULL;
 	isDragging = TRUE;
-
-	printf("Drag started: %p\n", widg);
 }
 
 void drag_end(GtkWidget *widg, GdkDragContext *context, gpointer user)
 {
 	isDragging = FALSE;
 
-	printf("Drag ended: %p\n", widg);
-
 	if (dragStartWidg != NULL && dragStopWidg != NULL
 			&& dragStartWidg != dragStopWidg)
-		printf("Swapping: %p and %p\n", dragStartWidg, dragStopWidg);
+		swapBoxContents(dragStartWidg, dragStopWidg);
 }
 
 gboolean drag_drop(GtkWidget *widg, GdkDragContext *context, gint x,
@@ -857,7 +890,6 @@ gboolean drag_drop(GtkWidget *widg, GdkDragContext *context, gint x,
 {
 	dragStopWidg = widg;
 
-	printf("Drag drop: %p\n", widg);
 	gtk_drag_finish(context, TRUE, TRUE, time);
 	return TRUE;
 }
