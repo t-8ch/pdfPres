@@ -897,7 +897,9 @@ static void initGUI(int numframes)
 			  *frame = NULL,
 			  *evbox = NULL,
 			  *outerevbox = NULL,
-			  *timeFrame = NULL;
+			  *timeFrame = NULL,
+			  *timeOuterEvbox = NULL,
+			  *noteOuterEvbox = NULL;
 	GdkColor black;
 	GtkWidget *timeElapsedLabel = NULL, *resetButton = NULL;
 	gchar *textSize = NULL;
@@ -992,7 +994,10 @@ static void initGUI(int numframes)
 			FALSE, FALSE, 5);
 
 	timeFrame = gtk_frame_new("Timer");
+	timeOuterEvbox = gtk_event_box_new();
 	gtk_container_add(GTK_CONTAINER(timeFrame), timeBox);
+	gtk_container_add(GTK_CONTAINER(timeOuterEvbox), timeFrame);
+	setupForDragging(timeOuterEvbox);
 
 	/* create note pad inside a scrolled window */
 	notePadBox = gtk_vbox_new(FALSE, 2);
@@ -1062,6 +1067,10 @@ static void initGUI(int numframes)
 	gtk_box_pack_start(GTK_BOX(notePadBox), toolbar, FALSE, FALSE, 2);
 	gtk_container_add(GTK_CONTAINER(notePadFrame), notePadBox);
 
+	noteOuterEvbox = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(noteOuterEvbox), notePadFrame);
+	setupForDragging(noteOuterEvbox);
+
 	/* init containers for "preview" */
 	table = gtk_table_new(numframes, numframes + 1, TRUE);
 	gtk_table_set_col_spacings(GTK_TABLE(table), 5);
@@ -1100,7 +1109,7 @@ static void initGUI(int numframes)
 
 		if (i == 0)
 		{
-			gtk_table_attach_defaults(GTK_TABLE(table), notePadFrame,
+			gtk_table_attach_defaults(GTK_TABLE(table), noteOuterEvbox,
 					0, 1, 0, numframes - 1);
 			gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
 					0, 1, numframes - 1, numframes);
@@ -1112,7 +1121,7 @@ static void initGUI(int numframes)
 				gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
 						numframes, numframes + 1,
 						0, 1);
-				gtk_table_attach_defaults(GTK_TABLE(table), timeFrame,
+				gtk_table_attach_defaults(GTK_TABLE(table), timeOuterEvbox,
 						numframes, numframes + 1,
 						numframes - 1, numframes);
 			}
@@ -1160,7 +1169,7 @@ static void initGUI(int numframes)
 		g_signal_connect(G_OBJECT(evbox), "size_allocate",
 				G_CALLBACK(onResize), thisport);
 
-		setupForDragging(evbox);
+		setupForDragging(outerevbox);
 	}
 
 	gtk_container_add(GTK_CONTAINER(win_preview), table);
