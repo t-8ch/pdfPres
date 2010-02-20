@@ -102,6 +102,10 @@ static int fitmode = FIT_PAGE;
 
 #define FONT_SIZE 35
 
+static GtkWidget *dragStartWidg = NULL;
+static GtkWidget *dragStopWidg = NULL;
+static gboolean isDragging = FALSE;
+
 
 void dieOnNull(void *ptr, int line)
 {
@@ -785,6 +789,9 @@ static gboolean onKeyPressed(GtkWidget *widg, GdkEventKey *ev,
 static gboolean onMouseReleased(GtkWidget *widg, GdkEventButton *ev,
 		gpointer user_data)
 {
+	if (isDragging)
+		return FALSE;
+
 	/* forward on left click, backward on right click */
 
 	if (ev->type == GDK_BUTTON_RELEASE)
@@ -801,7 +808,7 @@ static gboolean onMouseReleased(GtkWidget *widg, GdkEventButton *ev,
 		}
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
 static void onResize(GtkWidget *widg, GtkAllocation *al,
@@ -823,6 +830,54 @@ static void onResize(GtkWidget *widg, GtkAllocation *al,
 
 		updatePortPixbuf(port);
 	}
+}
+
+void drag_begin(GtkWidget *widg, GdkDragContext *context, gpointer user)
+{
+	dragStartWidg = widg;
+	dragStopWidg = NULL;
+	isDragging = TRUE;
+
+	printf("Drag started: %p\n", widg);
+}
+
+void drag_end(GtkWidget *widg, GdkDragContext *context, gpointer user)
+{
+	isDragging = FALSE;
+
+	printf("Drag ended: %p\n", widg);
+
+	if (dragStartWidg != NULL && dragStopWidg != NULL
+			&& dragStartWidg != dragStopWidg)
+		printf("Swapping: %p and %p\n", dragStartWidg, dragStopWidg);
+}
+
+gboolean drag_drop(GtkWidget *widg, GdkDragContext *context, gint x,
+		gint y, guint time, gpointer user)
+{
+	dragStopWidg = widg;
+
+	printf("Drag drop: %p\n", widg);
+	gtk_drag_finish(context, TRUE, TRUE, time);
+	return TRUE;
+}
+
+static void setupForDragging(GtkWidget *widg)
+{
+	GtkTargetEntry targ;
+	targ.target = "text/plain";
+	targ.flags = GTK_TARGET_SAME_APP;
+	targ.info = 0;
+
+	gtk_drag_source_set(widg, GDK_BUTTON1_MASK, &targ, 1, GDK_ACTION_MOVE);
+	gtk_drag_dest_set(widg, GTK_DEST_DEFAULT_ALL, &targ, 1,
+			GDK_ACTION_MOVE);
+	g_signal_connect(G_OBJECT(widg), "drag_begin",
+			G_CALLBACK(drag_begin), NULL);
+	g_signal_connect(G_OBJECT(widg), "drag_drop",
+			G_CALLBACK(drag_drop), NULL);
+	g_signal_connect(G_OBJECT(widg), "drag_end",
+			G_CALLBACK(drag_end), NULL);
 }
 
 static void usage(char *exe)
@@ -1104,6 +1159,8 @@ static void initGUI(int numframes)
 		/* resize callback */
 		g_signal_connect(G_OBJECT(evbox), "size_allocate",
 				G_CALLBACK(onResize), thisport);
+
+		setupForDragging(evbox);
 	}
 
 	gtk_container_add(GTK_CONTAINER(win_preview), table);
