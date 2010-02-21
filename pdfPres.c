@@ -106,6 +106,10 @@ static int fitmode = FIT_PAGE;
 
 #define FONT_SIZE 35
 
+static GtkWidget *dragStartWidg = NULL;
+static GtkWidget *dragStopWidg = NULL;
+static gboolean isDragging = FALSE;
+
 
 static void onSaveClicked(GtkWidget *widget, gpointer data);
 
@@ -870,6 +874,9 @@ static gboolean onKeyPressed(GtkWidget *widg, GdkEventKey *ev,
 static gboolean onMouseReleased(GtkWidget *widg, GdkEventButton *ev,
 		gpointer user_data)
 {
+	if (isDragging)
+		return FALSE;
+
 	/* forward on left click, backward on right click */
 
 	if (ev->type == GDK_BUTTON_RELEASE)
@@ -886,7 +893,7 @@ static gboolean onMouseReleased(GtkWidget *widg, GdkEventButton *ev,
 		}
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
 static void onResize(GtkWidget *widg, GtkAllocation *al,
@@ -910,6 +917,86 @@ static void onResize(GtkWidget *widg, GtkAllocation *al,
 	}
 }
 
+void swapBoxContents(GtkWidget *a, GtkWidget *b)
+{
+	GtkWidget *childA = NULL;
+	GtkWidget *childB = NULL;
+
+	/* Those widgets are outer event boxes --> "highlighting" and stuff
+	 * like that is done on those boxes. Reset the background color now
+	 * so that we can start from scratch. */
+	gtk_widget_modify_bg(a, GTK_STATE_NORMAL, NULL);
+	gtk_widget_modify_bg(b, GTK_STATE_NORMAL, NULL);
+
+	/* Get current children. */
+	childA = gtk_bin_get_child(GTK_BIN(a));
+	childB = gtk_bin_get_child(GTK_BIN(b));
+
+	/* Reference them. This must be done because the following call to
+	 * _remove() may unreference them -- hence, they could be destroyed.
+	 */
+	g_object_ref(G_OBJECT(childA));
+	g_object_ref(G_OBJECT(childB));
+
+	gtk_container_remove(GTK_CONTAINER(a), childA);
+	gtk_container_remove(GTK_CONTAINER(b), childB);
+
+	/* Re-add and unref them. */
+	gtk_container_add(GTK_CONTAINER(a), childB);
+	gtk_container_add(GTK_CONTAINER(b), childA);
+
+	g_object_unref(G_OBJECT(childA));
+	g_object_unref(G_OBJECT(childB));
+
+	/* No need to call refreshPorts() because resizing and re-rendering
+	 * has already been done by the resize callback. But we need to
+	 * update colors and stuff. */
+	refreshFrames();
+}
+
+void drag_begin(GtkWidget *widg, GdkDragContext *context, gpointer user)
+{
+	dragStartWidg = widg;
+	dragStopWidg = NULL;
+	isDragging = TRUE;
+}
+
+void drag_end(GtkWidget *widg, GdkDragContext *context, gpointer user)
+{
+	isDragging = FALSE;
+
+	if (dragStartWidg != NULL && dragStopWidg != NULL
+			&& dragStartWidg != dragStopWidg)
+		swapBoxContents(dragStartWidg, dragStopWidg);
+}
+
+gboolean drag_drop(GtkWidget *widg, GdkDragContext *context, gint x,
+		gint y, guint time, gpointer user)
+{
+	dragStopWidg = widg;
+
+	gtk_drag_finish(context, TRUE, TRUE, time);
+	return TRUE;
+}
+
+static void setupForDragging(GtkWidget *widg)
+{
+	GtkTargetEntry targ;
+	targ.target = "text/plain";
+	targ.flags = GTK_TARGET_SAME_APP;
+	targ.info = 0;
+
+	gtk_drag_source_set(widg, GDK_BUTTON1_MASK, &targ, 1, GDK_ACTION_MOVE);
+	gtk_drag_dest_set(widg, GTK_DEST_DEFAULT_ALL, &targ, 1,
+			GDK_ACTION_MOVE);
+	g_signal_connect(G_OBJECT(widg), "drag_begin",
+			G_CALLBACK(drag_begin), NULL);
+	g_signal_connect(G_OBJECT(widg), "drag_drop",
+			G_CALLBACK(drag_drop), NULL);
+	g_signal_connect(G_OBJECT(widg), "drag_end",
+			G_CALLBACK(drag_end), NULL);
+}
+
 static void usage(char *exe)
 {
 	fprintf(stderr, "Usage: %s [-s <slides>] [-n] [-w] <file>\n", exe);
@@ -927,7 +1014,9 @@ static void initGUI(int numframes)
 			  *frame = NULL,
 			  *evbox = NULL,
 			  *outerevbox = NULL,
-			  *timeFrame = NULL;
+			  *timeFrame = NULL,
+			  *timeOuterEvbox = NULL,
+			  *noteOuterEvbox = NULL;
 	GdkColor black;
 	GtkWidget *timeElapsedLabel = NULL, *resetButton = NULL;
 	gchar *textSize = NULL;
@@ -1022,7 +1111,10 @@ static void initGUI(int numframes)
 			FALSE, FALSE, 5);
 
 	timeFrame = gtk_frame_new("Timer");
+	timeOuterEvbox = gtk_event_box_new();
 	gtk_container_add(GTK_CONTAINER(timeFrame), timeBox);
+	gtk_container_add(GTK_CONTAINER(timeOuterEvbox), timeFrame);
+	setupForDragging(timeOuterEvbox);
 
 	/* create note pad inside a scrolled window */
 	notePadBox = gtk_vbox_new(FALSE, 2);
@@ -1105,6 +1197,10 @@ static void initGUI(int numframes)
 	gtk_box_pack_start(GTK_BOX(notePadBox), toolbar, FALSE, FALSE, 2);
 	gtk_container_add(GTK_CONTAINER(notePadFrame), notePadBox);
 
+	noteOuterEvbox = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(noteOuterEvbox), notePadFrame);
+	setupForDragging(noteOuterEvbox);
+
 	/* init containers for "preview" */
 	table = gtk_table_new(numframes, numframes + 1, TRUE);
 	gtk_table_set_col_spacings(GTK_TABLE(table), 5);
@@ -1143,7 +1239,7 @@ static void initGUI(int numframes)
 
 		if (i == 0)
 		{
-			gtk_table_attach_defaults(GTK_TABLE(table), notePadFrame,
+			gtk_table_attach_defaults(GTK_TABLE(table), noteOuterEvbox,
 					0, 1, 0, numframes - 1);
 			gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
 					0, 1, numframes - 1, numframes);
@@ -1155,7 +1251,7 @@ static void initGUI(int numframes)
 				gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
 						numframes, numframes + 1,
 						0, 1);
-				gtk_table_attach_defaults(GTK_TABLE(table), timeFrame,
+				gtk_table_attach_defaults(GTK_TABLE(table), timeOuterEvbox,
 						numframes, numframes + 1,
 						numframes - 1, numframes);
 			}
@@ -1202,6 +1298,8 @@ static void initGUI(int numframes)
 		/* resize callback */
 		g_signal_connect(G_OBJECT(evbox), "size_allocate",
 				G_CALLBACK(onResize), thisport);
+
+		setupForDragging(outerevbox);
 	}
 
 	gtk_container_add(GTK_CONTAINER(win_preview), table);
