@@ -898,6 +898,8 @@ static void onResize(GtkWidget *widg, GtkAllocation *al,
 	port->width = al->width;
 	port->height = al->height;
 
+    /* TODO: set sizes of panes at same proportions*/
+
 	/* if the new size differs from the old size, then
 	 * re-render this particular viewport. */
 	if (wOld != port->width || hOld != port->height)
@@ -915,6 +917,67 @@ static void usage(char *exe)
 	fprintf(stderr, "Usage: %s [-s <slides>] [-n] [-w] <file>\n", exe);
 }
 
+/* dynamically create all the frames */
+static GtkWidget *createPrevFrame(int offset)
+{
+	GtkWidget *image = NULL,
+			  *frame = NULL,
+			  *evbox = NULL,
+			  *outerevbox = NULL;
+	struct viewport *thisport = NULL;
+
+	//	/* calc the offset for this frame */
+	//	transIndex = i - (int)((double)numframes / 2.0);
+
+	/* create the widget - note that it is important not to
+	 * set the title to NULL. this would cause a lot more
+	 * redraws on startup because the frame will get re-
+	 * allocated when the title changes. */
+	frame = gtk_frame_new("");
+
+	/* create a new drawing area - the pdf will be rendered in
+	 * there */
+	image = gtk_image_new();
+	gtk_widget_set_size_request(image, 100, 100);
+
+	/* add widgets to their parents. the image is placed in an
+	 * eventbox, the box's size_allocate signal will be handled. so,
+	 * we know the exact width/height we can render into. (placing
+	 * the image into the frame would create the need of knowing the
+	 * frame's border size...)
+	 */
+	evbox = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(evbox), image);
+	gtk_container_add(GTK_CONTAINER(frame), evbox);
+
+	/* every frame will be placed in another eventbox so we can set a
+	 * background color */
+	outerevbox = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(outerevbox), frame);
+
+
+	/* make the eventbox "transparent" */
+	gtk_event_box_set_visible_window(GTK_EVENT_BOX(evbox), FALSE);
+
+	/* save info of this rendering port */
+	thisport = (struct viewport *)malloc(sizeof(struct viewport));
+	dieOnNull(thisport, __LINE__);
+	thisport->offset = offset;
+	thisport->image = image;
+	thisport->frame = frame;
+	thisport->pixbuf = NULL;
+	thisport->width = -1;
+	thisport->height = -1;
+	thisport->isBeamer = FALSE;
+	ports = g_list_append(ports, thisport);
+
+	/* resize callback */
+	g_signal_connect(G_OBJECT(evbox), "size_allocate",
+			G_CALLBACK(onResize), thisport);
+	
+    return outerevbox;
+}
+
 static void initGUI(int numframes)
 {
     int i = 0, transIndex = 0; 
@@ -922,7 +985,11 @@ static void initGUI(int numframes)
 			  *timeBox = NULL,
 			  *notePadBox = NULL,
 			  *notePadScroll = NULL,
-			  *table = NULL;
+			  //*table = NULL;
+              *leftHPane = NULL,
+              *leftVPane = NULL,
+              *rightHPane = NULL,
+              *rightVPane = NULL;
 	GtkWidget *image = NULL,
 			  *frame = NULL,
 			  *evbox = NULL,
@@ -1106,105 +1173,132 @@ static void initGUI(int numframes)
 	gtk_container_add(GTK_CONTAINER(notePadFrame), notePadBox);
 
 	/* init containers for "preview" */
-	table = gtk_table_new(numframes, numframes + 1, TRUE);
-	gtk_table_set_col_spacings(GTK_TABLE(table), 5);
+	//table = gtk_table_new(numframes, numframes + 1, TRUE);
+	//gtk_table_set_col_spacings(GTK_TABLE(table), 5);
 
-	/* dynamically create all the frames */
-	for (i = 0; i < numframes; i++)
-	{
-		/* calc the offset for this frame */
-		transIndex = i - (int)((double)numframes / 2.0);
+    leftVPane = gtk_vpaned_new();
+	gtk_paned_add1(GTK_PANED(leftVPane), notePadFrame);
+	gtk_paned_add2(GTK_PANED(leftVPane), createPrevFrame(-1));
+    // 0 - 1 = -1    1 - 1 = 0
+	//	transIndex = i - (int)((double)numframes / 2.0);
 
-		/* create the widget - note that it is important not to
-		 * set the title to NULL. this would cause a lot more
-		 * redraws on startup because the frame will get re-
-		 * allocated when the title changes. */
-		frame = gtk_frame_new("");
 
-		/* create a new drawing area - the pdf will be rendered in
-		 * there */
-		image = gtk_image_new();
-		gtk_widget_set_size_request(image, 100, 100);
+    /* TODO: set sizes of panes */
 
-		/* add widgets to their parents. the image is placed in an
-		 * eventbox, the box's size_allocate signal will be handled. so,
-		 * we know the exact width/height we can render into. (placing
-		 * the image into the frame would create the need of knowing the
-		 * frame's border size...)
-		 */
-		evbox = gtk_event_box_new();
-		gtk_container_add(GTK_CONTAINER(evbox), image);
-		gtk_container_add(GTK_CONTAINER(frame), evbox);
+    rightHPane = gtk_hpaned_new();
+	gtk_paned_add1(GTK_PANED(rightHPane), createPrevFrame(0));
 
-		/* every frame will be placed in another eventbox so we can set a
-		 * background color */
-		outerevbox = gtk_event_box_new();
-		gtk_container_add(GTK_CONTAINER(outerevbox), frame);
+    rightVPane = gtk_vpaned_new();
+	gtk_paned_add1(GTK_PANED(rightVPane), createPrevFrame(1));
+	gtk_paned_add2(GTK_PANED(rightVPane), timeFrame);
 
-		if (i == 0)
-		{
-			gtk_table_attach_defaults(GTK_TABLE(table), notePadFrame,
-					0, 1, 0, numframes - 1);
-			gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
-					0, 1, numframes - 1, numframes);
-		}
-		else
-		{
-			if (i == numframes - 1)
-			{
-				gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
-						numframes, numframes + 1,
-						0, 1);
-				gtk_table_attach_defaults(GTK_TABLE(table), timeFrame,
-						numframes, numframes + 1,
-						numframes - 1, numframes);
-			}
-			else
-			{
-				if (i == (int)(numframes / 2))
-				{
-					gtk_table_attach_defaults(GTK_TABLE(table),
-							outerevbox, i, i + 2, 0, numframes);
-				}
-				else
-				{
-					if (i < (int)(numframes / 2))
-					{
-						gtk_table_attach_defaults(GTK_TABLE(table),
-								outerevbox, i, i + 1,
-								numframes - i - 1, numframes - i);
-					}
-					else
-					{
-						gtk_table_attach_defaults(GTK_TABLE(table),
-								outerevbox, i + 1, i + 2,
-								numframes - i - 1, numframes - i);
-					}
-				}
-			}
-		}
+	gtk_paned_add2(GTK_PANED(rightHPane), rightVPane);
 
-		/* make the eventbox "transparent" */
-		gtk_event_box_set_visible_window(GTK_EVENT_BOX(evbox), FALSE);
+    leftHPane = gtk_hpaned_new();
+	gtk_paned_add1(GTK_PANED(leftHPane), leftVPane);
+	gtk_paned_add2(GTK_PANED(leftHPane), rightHPane);
 
-		/* save info of this rendering port */
-		thisport = (struct viewport *)malloc(sizeof(struct viewport));
-		dieOnNull(thisport, __LINE__);
-		thisport->offset = transIndex;
-		thisport->image = image;
-		thisport->frame = frame;
-		thisport->pixbuf = NULL;
-		thisport->width = -1;
-		thisport->height = -1;
-		thisport->isBeamer = FALSE;
-		ports = g_list_append(ports, thisport);
 
-		/* resize callback */
-		g_signal_connect(G_OBJECT(evbox), "size_allocate",
-				G_CALLBACK(onResize), thisport);
-	}
 
-	gtk_container_add(GTK_CONTAINER(win_preview), table);
+
+	///* dynamically create all the frames */
+	//for (i = 0; i < numframes; i++)
+	//{
+	//	/* calc the offset for this frame */
+	//	transIndex = i - (int)((double)numframes / 2.0);
+
+	//	/* create the widget - note that it is important not to
+	//	 * set the title to NULL. this would cause a lot more
+	//	 * redraws on startup because the frame will get re-
+	//	 * allocated when the title changes. */
+	//	frame = gtk_frame_new("");
+
+	//	/* create a new drawing area - the pdf will be rendered in
+	//	 * there */
+	//	image = gtk_image_new();
+	//	gtk_widget_set_size_request(image, 100, 100);
+
+	//	/* add widgets to their parents. the image is placed in an
+	//	 * eventbox, the box's size_allocate signal will be handled. so,
+	//	 * we know the exact width/height we can render into. (placing
+	//	 * the image into the frame would create the need of knowing the
+	//	 * frame's border size...)
+	//	 */
+	//	evbox = gtk_event_box_new();
+	//	gtk_container_add(GTK_CONTAINER(evbox), image);
+	//	gtk_container_add(GTK_CONTAINER(frame), evbox);
+
+	//	/* every frame will be placed in another eventbox so we can set a
+	//	 * background color */
+	//	outerevbox = gtk_event_box_new();
+	//	gtk_container_add(GTK_CONTAINER(outerevbox), frame);
+
+	//	if (i == 0)
+	//	{
+	//		gtk_table_attach_defaults(GTK_TABLE(table), notePadFrame,
+	//				0, 1, 0, numframes - 1);
+	//		gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
+	//				0, 1, numframes - 1, numframes);
+	//	}
+	//	else
+	//	{
+	//		if (i == numframes - 1)
+	//		{
+	//			gtk_table_attach_defaults(GTK_TABLE(table), outerevbox,
+	//					numframes, numframes + 1,
+	//					0, 1);
+	//			gtk_table_attach_defaults(GTK_TABLE(table), timeFrame,
+	//					numframes, numframes + 1,
+	//					numframes - 1, numframes);
+	//		}
+	//		else
+	//		{
+	//			if (i == (int)(numframes / 2))
+	//			{
+	//				gtk_table_attach_defaults(GTK_TABLE(table),
+	//						outerevbox, i, i + 2, 0, numframes);
+	//			}
+	//			else
+	//			{
+	//				if (i < (int)(numframes / 2))
+	//				{
+	//					gtk_table_attach_defaults(GTK_TABLE(table),
+	//							outerevbox, i, i + 1,
+	//							numframes - i - 1, numframes - i);
+	//				}
+	//				else
+	//				{
+	//					gtk_table_attach_defaults(GTK_TABLE(table),
+	//							outerevbox, i + 1, i + 2,
+	//							numframes - i - 1, numframes - i);
+	//				}
+	//			}
+	//		}
+	//	}
+
+	//	/* make the eventbox "transparent" */
+	//	gtk_event_box_set_visible_window(GTK_EVENT_BOX(evbox), FALSE);
+
+	//	/* save info of this rendering port */
+	//	thisport = (struct viewport *)malloc(sizeof(struct viewport));
+	//	dieOnNull(thisport, __LINE__);
+	//	thisport->offset = transIndex;
+	//	thisport->image = image;
+	//	thisport->frame = frame;
+	//	thisport->pixbuf = NULL;
+	//	thisport->width = -1;
+	//	thisport->height = -1;
+	//	thisport->isBeamer = FALSE;
+	//	ports = g_list_append(ports, thisport);
+
+	//	/* resize callback */
+	//	g_signal_connect(G_OBJECT(evbox), "size_allocate",
+	//			G_CALLBACK(onResize), thisport);
+	//}
+
+
+	//gtk_container_add(GTK_CONTAINER(win_preview), table);
+	gtk_container_add(GTK_CONTAINER(win_preview), leftHPane);
 
 	/* in order to set the initially highlighted frame */
 	refreshFrames();
