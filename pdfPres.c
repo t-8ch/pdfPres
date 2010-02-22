@@ -105,6 +105,8 @@ static GdkColor col_current, col_marked, col_dim;
 static int fitmode = FIT_PAGE;
 
 #define FONT_SIZE 35
+#define PREV_WIDTH 800
+#define PREV_HEIGHT 600
 
 static GtkWidget *dragStartWidg = NULL;
 static GtkWidget *dragStopWidg = NULL;
@@ -1285,7 +1287,17 @@ static void initGUI(int numframes)
 
 	gtk_container_add(GTK_CONTAINER(win_preview), leftHPane);
 
+
 	/* in order to set the initially highlighted frame */
+    gtk_window_set_default_size(GTK_WINDOW(win_preview),PREV_WIDTH, PREV_HEIGHT);
+//    printf("width/4 = %d, width - width/4 = %d\n",(int)(PREV_WIDTH / 4), (int) (PREV_WIDTH - PREV_WIDTH / 4));
+//    fflush(stdout);
+//    gtk_paned_set_position(GTK_PANED(leftHPane), 200);
+//    gtk_paned_set_position(GTK_PANED(rightHPane), 400);
+    gtk_paned_set_position(GTK_PANED(leftHPane),(int) (PREV_WIDTH / 4));
+    gtk_paned_set_position(GTK_PANED(rightHPane), (int) (PREV_WIDTH / 2));
+    gtk_paned_set_position(GTK_PANED(leftVPane), (int) (PREV_HEIGHT / 2));
+    gtk_paned_set_position(GTK_PANED(rightVPane), (int) (PREV_HEIGHT / 2));
 	refreshFrames();
 
 	/* add a rendering area to the beamer window */
