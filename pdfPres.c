@@ -178,6 +178,11 @@ static GdkPixbuf * getRenderedPixbuf(struct viewport *pp, int mypage_i)
 			break;
 	}
 
+	/* Don't try to render invalid sizes. Cast to int needed because
+	 * the pixbuf will measure its size in pixels. */
+	if ((int)w <= 0 || (int)h <= 0)
+		return NULL;
+
 	/* check if already in cache. */
 	it = cache;
 	found = FALSE;
@@ -318,12 +323,13 @@ static void updatePortPixbuf(struct viewport *pp)
 	 * getRenderedPixbuf(). */
 	pp->pixbuf = getRenderedPixbuf(pp, mypage_i);
 
-	/* display the current page. */
+	/* Display the current page. This return value may be NULL if one
+	 * of the panes is too small. In that case, we don't show
+	 * anything. */
 	if (pp->pixbuf != NULL)
 		gtk_image_set_from_pixbuf(GTK_IMAGE(pp->image), pp->pixbuf);
 	else
-		fprintf(stderr, "[Cache] Returned empty pixbuf."
-				" You're doing something wrong.\n");
+		gtk_image_clear(GTK_IMAGE(pp->image));
 }
 
 static void refreshFrames(void)
@@ -1271,6 +1277,8 @@ static void initGUI(int numframes)
 
 
     /* TODO: set sizes of panes */
+	/* TODO: Fix warnings about invalid widget sizes (try to shrink one
+	 * pane to size 0 and you'll see it) */
 
     rightHPane = gtk_hpaned_new();
 	gtk_paned_add1(GTK_PANED(rightHPane), createPrevFrame(0));
